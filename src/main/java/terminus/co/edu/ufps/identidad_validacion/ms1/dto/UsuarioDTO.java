@@ -1,6 +1,5 @@
 package terminus.co.edu.ufps.identidad_validacion.ms1.dto;
 
-import terminus.co.edu.ufps.identidad_validacion.ms1.model.ProveedorAuth;
 import terminus.co.edu.ufps.identidad_validacion.ms1.model.RolSistema;
 import terminus.co.edu.ufps.identidad_validacion.ms1.model.Usuario;
 import java.time.LocalDateTime;
@@ -17,7 +16,7 @@ public class UsuarioDTO {
     private String nombre;
     private String cedula;
     private Boolean activo;
-    private ProveedorAuth proveedorAuth;
+    private Boolean debeCambiarContrasena;
     private LocalDateTime fechaCreacion;
     private LocalDateTime fechaUltimoAcceso;
 
@@ -29,7 +28,7 @@ public class UsuarioDTO {
                 .nombre(usuario.getNombre())
                 .cedula(usuario.getCedula())
                 .activo(usuario.getActivo())
-                .proveedorAuth(usuario.getProveedorAuth())
+                .debeCambiarContrasena(usuario.getDebeCambiarContrasena())
                 .fechaCreacion(usuario.getFechaCreacion())
                 .fechaUltimoAcceso(usuario.getFechaUltimoAcceso())
                 .build();

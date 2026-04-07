@@ -14,5 +14,6 @@ public class LoginResponseDTO {
     private RolSistema rol;
     private String nombre;
     private String correo;
+    private Boolean debeCambiarContrasena;
 }
 

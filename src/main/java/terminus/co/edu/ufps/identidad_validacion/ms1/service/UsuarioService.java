@@ -6,13 +6,10 @@ import terminus.co.edu.ufps.identidad_validacion.ms1.dto.CrearUsuarioResponseDTO
 import terminus.co.edu.ufps.identidad_validacion.ms1.dto.UsuarioDTO;
 import terminus.co.edu.ufps.identidad_validacion.ms1.exception.AuthException;
 import terminus.co.edu.ufps.identidad_validacion.ms1.exception.ResourceNotFoundException;
-import terminus.co.edu.ufps.identidad_validacion.ms1.model.ProveedorAuth;
 import terminus.co.edu.ufps.identidad_validacion.ms1.model.RolSistema;
 import terminus.co.edu.ufps.identidad_validacion.ms1.model.Usuario;
 import terminus.co.edu.ufps.identidad_validacion.ms1.repository.UsuarioRepository;
-import java.security.SecureRandom;
 import java.time.LocalDateTime;
-import java.util.Base64;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -31,20 +28,16 @@ public class UsuarioService {
             throw new AuthException("Ya existe una cuenta con ese correo.");
         }
 
-        String contrasenaTemporal = null;
-        String hash = null;
-        if (request.getProveedorAuth() == ProveedorAuth.LOCAL) {
-            contrasenaTemporal = generarContrasenaTemporal();
-            hash = passwordEncoder.encode(contrasenaTemporal);
-        }
+        String cedulaNormalizada = request.getCedula().trim();
+        String hash = passwordEncoder.encode(cedulaNormalizada);
 
         Usuario usuario = Usuario.builder()
                 .correo(request.getCorreo())
                 .nombre(request.getNombre())
-                .cedula(request.getCedula())
+                .cedula(cedulaNormalizada)
                 .rolSistema(request.getRolSistema())
-                .proveedorAuth(request.getProveedorAuth())
                 .contrasena(hash)
+                .debeCambiarContrasena(true)
                 .activo(true)
                 .intentosFallidos(0)
                 .fechaCreacion(LocalDateTime.now())
@@ -53,7 +46,7 @@ public class UsuarioService {
         Usuario guardado = usuarioRepository.save(usuario);
         return CrearUsuarioResponseDTO.builder()
                 .usuario(UsuarioDTO.fromEntity(guardado))
-                .contrasenaTemporal(contrasenaTemporal)
+            .mensaje("Usuario creado. La contrasena inicial es la cedula y debe cambiarse en el primer ingreso.")
                 .build();
     }
 
@@ -77,10 +70,5 @@ public class UsuarioService {
         return UsuarioDTO.fromEntity(guardado);
     }
 
-    private String generarContrasenaTemporal() {
-        byte[] bytes = new byte[12];
-        new SecureRandom().nextBytes(bytes);
-        return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
-    }
 }
 

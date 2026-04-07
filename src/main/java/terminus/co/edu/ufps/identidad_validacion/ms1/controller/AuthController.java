@@ -3,6 +3,7 @@ package terminus.co.edu.ufps.identidad_validacion.ms1.controller;
 import terminus.co.edu.ufps.identidad_validacion.ms1.dto.LoginRequestDTO;
 import terminus.co.edu.ufps.identidad_validacion.ms1.dto.LoginResponseDTO;
 import terminus.co.edu.ufps.identidad_validacion.ms1.dto.RecuperarContrasenaRequestDTO;
+import terminus.co.edu.ufps.identidad_validacion.ms1.dto.CambiarContrasenaRequestDTO;
 import terminus.co.edu.ufps.identidad_validacion.ms1.service.AuthService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -10,6 +11,9 @@ import jakarta.validation.Valid;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -41,6 +45,16 @@ public class AuthController {
     public ResponseEntity<Map<String, String>> recuperar(@Valid @RequestBody RecuperarContrasenaRequestDTO request) {
         authService.registrarEventoRecuperacion(request.getCorreo());
         return ResponseEntity.ok(Map.of("mensaje", "Si el correo existe, se procesarÃ¡ la recuperaciÃ³n."));
+    }
+
+    @PostMapping("/cambiar-contrasena")
+    @PreAuthorize("isAuthenticated()")
+    @Operation(summary = "Cambiar contrasena", description = "Cambia la contrasena temporal por una definitiva")
+    public ResponseEntity<Map<String, String>> cambiarContrasena(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @Valid @RequestBody CambiarContrasenaRequestDTO request) {
+        authService.cambiarContrasena(userDetails.getUsername(), request.getContrasenaActual(), request.getContrasenaNueva());
+        return ResponseEntity.ok(Map.of("mensaje", "Contrasena actualizada correctamente."));
     }
 }
 

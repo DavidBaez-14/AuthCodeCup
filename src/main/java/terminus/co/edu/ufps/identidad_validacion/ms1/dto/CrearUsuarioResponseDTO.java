@@ -8,6 +8,6 @@ import lombok.Data;
 public class CrearUsuarioResponseDTO {
 
     private UsuarioDTO usuario;
-    private String contrasenaTemporal;
+    private String mensaje;
 }
 

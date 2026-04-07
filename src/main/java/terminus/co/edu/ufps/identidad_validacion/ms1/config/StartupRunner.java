@@ -1,6 +1,5 @@
 package terminus.co.edu.ufps.identidad_validacion.ms1.config;
 
-import terminus.co.edu.ufps.identidad_validacion.ms1.model.ProveedorAuth;
 import terminus.co.edu.ufps.identidad_validacion.ms1.model.RolSistema;
 import terminus.co.edu.ufps.identidad_validacion.ms1.model.Usuario;
 import terminus.co.edu.ufps.identidad_validacion.ms1.repository.UsuarioRepository;
@@ -45,8 +44,8 @@ public class StartupRunner implements CommandLineRunner {
                     .correo(adminEmail)
                     .nombre("Administrador")
                     .rolSistema(RolSistema.ADMINISTRADOR)
-                    .proveedorAuth(ProveedorAuth.LOCAL)
                     .contrasena(passwordEncoder.encode(adminPassword))
+                    .debeCambiarContrasena(false)
                     .activo(true)
                     .intentosFallidos(0)
                     .fechaCreacion(LocalDateTime.now())

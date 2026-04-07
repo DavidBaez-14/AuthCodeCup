@@ -29,7 +29,7 @@ public class Usuario {
     @Column(nullable = false, unique = true, length = 150)
     private String correo;
 
-    @Column(length = 255)
+    @Column(nullable = false, length = 255)
     private String contrasena;
 
     @Enumerated(EnumType.STRING)
@@ -46,13 +46,9 @@ public class Usuario {
     @Column(nullable = false)
     private Boolean activo = true;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "proveedor_auth", nullable = false, length = 20)
+    @Column(name = "debe_cambiar_contrasena", nullable = false, columnDefinition = "boolean default false")
     @Builder.Default
-    private ProveedorAuth proveedorAuth = ProveedorAuth.LOCAL;
-
-    @Column(name = "google_id", length = 100)
-    private String googleId;
+    private Boolean debeCambiarContrasena = false;
 
     @Builder.Default
     @Column(name = "intentos_fallidos", nullable = false)

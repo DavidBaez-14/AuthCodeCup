@@ -35,7 +35,8 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
                     + "?token=" + encode(payload.getToken())
                     + "&rol=" + encode(payload.getRol().name())
                     + "&nombre=" + encode(payload.getNombre())
-                    + "&correo=" + encode(payload.getCorreo());
+                    + "&correo=" + encode(payload.getCorreo())
+                    + "&debeCambiarContrasena=" + encode(String.valueOf(payload.getDebeCambiarContrasena()));
             response.sendRedirect(redirect);
         } catch (Exception ex) {
             String redirect = frontendUrl + "/login?oauthError=" + encode(ex.getMessage() == null

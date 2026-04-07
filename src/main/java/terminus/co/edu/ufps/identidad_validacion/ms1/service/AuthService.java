@@ -4,7 +4,6 @@ import terminus.co.edu.ufps.identidad_validacion.ms1.dto.LoginRequestDTO;
 import terminus.co.edu.ufps.identidad_validacion.ms1.dto.LoginResponseDTO;
 import terminus.co.edu.ufps.identidad_validacion.ms1.exception.AuthException;
 import terminus.co.edu.ufps.identidad_validacion.ms1.exception.CuentaBloqueadaException;
-import terminus.co.edu.ufps.identidad_validacion.ms1.model.ProveedorAuth;
 import terminus.co.edu.ufps.identidad_validacion.ms1.model.Usuario;
 import terminus.co.edu.ufps.identidad_validacion.ms1.repository.UsuarioRepository;
 import terminus.co.edu.ufps.identidad_validacion.ms1.security.JwtTokenProvider;
@@ -37,10 +36,6 @@ public class AuthService {
             throw new CuentaBloqueadaException("Cuenta bloqueada. Intenta en " + minutos + " minutos.");
         }
 
-        if (usuario.getProveedorAuth() == ProveedorAuth.GOOGLE) {
-            throw new AuthException("Esta cuenta usa acceso con Google.");
-        }
-
         if (usuario.getContrasena() == null || !passwordEncoder.matches(request.getContrasena(), usuario.getContrasena())) {
             int intentos = usuario.getIntentosFallidos() == null ? 0 : usuario.getIntentosFallidos();
             intentos++;
@@ -65,6 +60,7 @@ public class AuthService {
                 .rol(usuario.getRolSistema())
                 .nombre(usuario.getNombre())
                 .correo(usuario.getCorreo())
+                .debeCambiarContrasena(Boolean.TRUE.equals(usuario.getDebeCambiarContrasena()))
                 .build();
     }
 
@@ -87,7 +83,25 @@ public class AuthService {
                 .rol(usuario.getRolSistema())
                 .nombre(usuario.getNombre())
                 .correo(usuario.getCorreo())
+                .debeCambiarContrasena(Boolean.TRUE.equals(usuario.getDebeCambiarContrasena()))
                 .build();
+    }
+
+    public void cambiarContrasena(String correo, String contrasenaActual, String contrasenaNueva) {
+        Usuario usuario = usuarioRepository.findByCorreo(correo)
+                .orElseThrow(() -> new AuthException("Usuario no encontrado."));
+
+        if (contrasenaNueva == null || contrasenaNueva.length() < 8) {
+            throw new AuthException("La nueva contrasena debe tener al menos 8 caracteres.");
+        }
+
+        if (!passwordEncoder.matches(contrasenaActual, usuario.getContrasena())) {
+            throw new AuthException("La contrasena actual es incorrecta.");
+        }
+
+        usuario.setContrasena(passwordEncoder.encode(contrasenaNueva));
+        usuario.setDebeCambiarContrasena(false);
+        usuarioRepository.save(usuario);
     }
 
     public void registrarEventoRecuperacion(String correo) {
