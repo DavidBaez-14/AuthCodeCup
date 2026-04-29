@@ -34,5 +34,4 @@ build/
 
 ### Local secrets ###
 .env
-src/main/resources/application.properties
 /src/main/java/terminus/co/edu/ufps/identidad_validacion/agent/
