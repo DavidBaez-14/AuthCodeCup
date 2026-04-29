@@ -35,4 +35,4 @@ build/
 ### Local secrets ###
 .env
 src/main/resources/application.properties
-C:\Users\PC\Desktop\CODECUP\AuthCodeCup\src\main\java\terminus\co\edu\ufps\identidad_validacion\agent
+/src/main/java/terminus/co/edu/ufps/identidad_validacion/agent/
