@@ -1,9 +1,9 @@
 .git
 .gitignore
 .idea
-.mvn/wrapper/maven-wrapper.jar
-mvnw.cmd
+.mvn
 mvnw
+mvnw.cmd
 HELP.md
 README.md
 *.iml
