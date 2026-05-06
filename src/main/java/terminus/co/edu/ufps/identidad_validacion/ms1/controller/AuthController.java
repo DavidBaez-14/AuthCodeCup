@@ -1,60 +1,44 @@
 package terminus.co.edu.ufps.identidad_validacion.ms1.controller;
 
-import terminus.co.edu.ufps.identidad_validacion.ms1.dto.LoginRequestDTO;
-import terminus.co.edu.ufps.identidad_validacion.ms1.dto.LoginResponseDTO;
-import terminus.co.edu.ufps.identidad_validacion.ms1.dto.RecuperarContrasenaRequestDTO;
-import terminus.co.edu.ufps.identidad_validacion.ms1.dto.CambiarContrasenaRequestDTO;
-import terminus.co.edu.ufps.identidad_validacion.ms1.service.AuthService;
-import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
-import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.bind.annotation.GetMapping;
+import terminus.co.edu.ufps.identidad_validacion.ms1.dto.ExchangeRequestDTO;
+import terminus.co.edu.ufps.identidad_validacion.ms1.dto.RegistroRequestDTO;
+import terminus.co.edu.ufps.identidad_validacion.ms1.dto.RegistroResponseDTO;
+import terminus.co.edu.ufps.identidad_validacion.ms1.dto.TokenResponseDTO;
+import terminus.co.edu.ufps.identidad_validacion.ms1.service.AuthService;
 
 @RestController
 @RequestMapping("/api/auth")
 @RequiredArgsConstructor
-@Tag(name = "AutenticaciÃ³n", description = "Login local y OAuth2 con Google")
+@Tag(name = "Auth")
 public class AuthController {
 
     private final AuthService authService;
 
-    @PostMapping("/login")
-    @Operation(summary = "Login local", description = "Autentica por correo y contraseÃ±a")
-    public ResponseEntity<LoginResponseDTO> login(@Valid @RequestBody LoginRequestDTO request) {
-        return ResponseEntity.ok(authService.login(request));
+    @PostMapping("/exchange")
+    public ResponseEntity<TokenResponseDTO> exchange(@Valid @RequestBody ExchangeRequestDTO req) {
+        return ResponseEntity.ok(authService.exchange(req.getAppwriteJwt()));
     }
 
-    @GetMapping("/google")
-    @Operation(summary = "Inicio OAuth2 Google", description = "Redirige al flujo OAuth2 de Google")
-    public ResponseEntity<Void> google() {
-        return ResponseEntity.status(302).header("Location", "/oauth2/authorization/google").build();
+    @PostMapping("/registrar")
+    public ResponseEntity<RegistroResponseDTO> registrar(@Valid @RequestBody RegistroRequestDTO req) {
+        return ResponseEntity.ok(authService.registrar(req));
     }
 
-    @PostMapping("/recuperar-contrasena")
-    @Operation(summary = "Recuperar contrasena", description = "Registra evento para notificaciones externas")
-    public ResponseEntity<Map<String, String>> recuperar(@Valid @RequestBody RecuperarContrasenaRequestDTO request) {
-        authService.registrarEventoRecuperacion(request.getCorreo());
-        return ResponseEntity.ok(Map.of("mensaje", "Si el correo existe, se procesarÃ¡ la recuperaciÃ³n."));
-    }
-
-    @PostMapping("/cambiar-contrasena")
+    @PostMapping("/refresh")
     @PreAuthorize("isAuthenticated()")
-    @Operation(summary = "Cambiar contrasena", description = "Cambia la contrasena temporal por una definitiva")
-    public ResponseEntity<Map<String, String>> cambiarContrasena(
-            @AuthenticationPrincipal UserDetails userDetails,
-            @Valid @RequestBody CambiarContrasenaRequestDTO request) {
-        authService.cambiarContrasena(userDetails.getUsername(), request.getContrasenaActual(), request.getContrasenaNueva());
-        return ResponseEntity.ok(Map.of("mensaje", "Contrasena actualizada correctamente."));
+    public ResponseEntity<TokenResponseDTO> refresh(@AuthenticationPrincipal Jwt jwt) {
+        return ResponseEntity.ok(authService.refresh(jwt));
     }
 }
 

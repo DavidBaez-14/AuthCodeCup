@@ -1,5 +1,6 @@
 package terminus.co.edu.ufps.identidad_validacion.ms1.controller;
 
+import terminus.co.edu.ufps.identidad_validacion.ms1.dto.ContactoDelegadoDTO;
 import terminus.co.edu.ufps.identidad_validacion.ms1.dto.CsvResultadoDTO;
 import terminus.co.edu.ufps.identidad_validacion.ms1.dto.JugadorDTO;
 import terminus.co.edu.ufps.identidad_validacion.ms1.model.RolJugador;
@@ -51,6 +52,12 @@ public class JugadorController {
     @Operation(summary = "Consultar por cÃ©dula", description = "Obtiene datos del jugador por cÃ©dula exacta")
     public ResponseEntity<JugadorDTO> buscarPorCedula(@PathVariable String cedula) {
         return ResponseEntity.ok(jugadorService.buscarPorCedula(cedula));
+    }
+
+    @GetMapping("/{cedula}/contacto-delegado")
+    @PreAuthorize("hasAuthority('SCOPE_internal')")
+    public ResponseEntity<ContactoDelegadoDTO> getContactoDelegado(@PathVariable String cedula) {
+        return ResponseEntity.ok(jugadorService.buscarContactoDelegadoDeJugador(cedula));
     }
 }
 

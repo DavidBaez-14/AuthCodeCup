@@ -1,111 +1,111 @@
 package terminus.co.edu.ufps.identidad_validacion.ms1.service;
 
-import terminus.co.edu.ufps.identidad_validacion.ms1.dto.LoginRequestDTO;
-import terminus.co.edu.ufps.identidad_validacion.ms1.dto.LoginResponseDTO;
-import terminus.co.edu.ufps.identidad_validacion.ms1.exception.AuthException;
-import terminus.co.edu.ufps.identidad_validacion.ms1.exception.CuentaBloqueadaException;
-import terminus.co.edu.ufps.identidad_validacion.ms1.model.Usuario;
-import terminus.co.edu.ufps.identidad_validacion.ms1.repository.UsuarioRepository;
-import terminus.co.edu.ufps.identidad_validacion.ms1.security.JwtTokenProvider;
-import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import terminus.co.edu.ufps.identidad_validacion.ms1.dto.RegistroRequestDTO;
+import terminus.co.edu.ufps.identidad_validacion.ms1.dto.RegistroResponseDTO;
+import terminus.co.edu.ufps.identidad_validacion.ms1.dto.TokenResponseDTO;
+import terminus.co.edu.ufps.identidad_validacion.ms1.exception.AuthException;
+import terminus.co.edu.ufps.identidad_validacion.ms1.model.EstadoRegistro;
+import terminus.co.edu.ufps.identidad_validacion.ms1.model.Perfil;
+import terminus.co.edu.ufps.identidad_validacion.ms1.model.RolSolicitado;
+import terminus.co.edu.ufps.identidad_validacion.ms1.repository.PerfilRepository;
+import terminus.co.edu.ufps.identidad_validacion.ms1.security.AppwriteSessionVerifier;
+import terminus.co.edu.ufps.identidad_validacion.ms1.security.JwtTokenProvider;
 
-@Slf4j
 @Service
 @RequiredArgsConstructor
 public class AuthService {
 
-    private final UsuarioRepository usuarioRepository;
-    private final PasswordEncoder passwordEncoder;
+    private final AppwriteSessionVerifier sessionVerifier;
     private final JwtTokenProvider jwtTokenProvider;
+    private final PerfilRepository perfilRepository;
 
-    public LoginResponseDTO login(LoginRequestDTO request) {
-        Usuario usuario = usuarioRepository.findByCorreo(request.getCorreo())
-                .orElseThrow(() -> new AuthException("Credenciales incorrectas."));
+    @Transactional(readOnly = true)
+    public TokenResponseDTO exchange(String appwriteJwt) {
+        var user = sessionVerifier.verify(appwriteJwt);
 
-        if (Boolean.FALSE.equals(usuario.getActivo())) {
-            throw new org.springframework.security.access.AccessDeniedException("Cuenta desactivada.");
+        var perfil = perfilRepository.findByAppwriteUserId(user.id())
+                .orElseThrow(() -> new AuthException("Perfil no registrado."));
+
+        if (perfil.getEstado() != EstadoRegistro.APROBADO) {
+            throw new AuthException("Perfil pendiente de aprobacion.");
         }
 
-        if (usuario.getBloqueadoHasta() != null && usuario.getBloqueadoHasta().isAfter(LocalDateTime.now())) {
-            long minutos = Math.max(1, Duration.between(LocalDateTime.now(), usuario.getBloqueadoHasta()).toMinutes());
-            throw new CuentaBloqueadaException("Cuenta bloqueada. Intenta en " + minutos + " minutos.");
+        var rolesValidos = user.labels().stream()
+                .filter(l -> List.of("administrador", "arbitro", "delegado").contains(l))
+                .toList();
+
+        if (rolesValidos.isEmpty()) {
+            throw new AuthException("Usuario sin rol asignado.");
         }
 
-        if (usuario.getContrasena() == null || !passwordEncoder.matches(request.getContrasena(), usuario.getContrasena())) {
-            int intentos = usuario.getIntentosFallidos() == null ? 0 : usuario.getIntentosFallidos();
-            intentos++;
-            usuario.setIntentosFallidos(intentos);
-            if (intentos >= 5) {
-                usuario.setBloqueadoHasta(LocalDateTime.now().plusMinutes(15));
-            }
-            usuarioRepository.save(usuario);
-            throw new AuthException("Credenciales incorrectas.");
-        }
+        var token = jwtTokenProvider.generarToken(
+                user.id(),
+                perfil.getCedula(),
+                user.email(),
+                user.name(),
+                rolesValidos);
 
-        usuario.setIntentosFallidos(0);
-        usuario.setBloqueadoHasta(null);
-        usuario.setFechaUltimoAcceso(LocalDateTime.now());
-        usuarioRepository.save(usuario);
-
-        String token = jwtTokenProvider.generarToken(usuario.getCorreo(), usuario.getRolSistema().name(), usuario.getNombre());
-        return LoginResponseDTO.builder()
+        return TokenResponseDTO.builder()
                 .token(token)
-                .tipo("Bearer")
-                .expiraEn(jwtTokenProvider.getExpirationSeconds())
-                .rol(usuario.getRolSistema())
-                .nombre(usuario.getNombre())
-                .correo(usuario.getCorreo())
-                .debeCambiarContrasena(Boolean.TRUE.equals(usuario.getDebeCambiarContrasena()))
+                .expiraEn(jwtTokenProvider.getTtlSeconds())
+                .roles(rolesValidos)
+                .nombre(user.name())
+                .correo(user.email())
+                .cedula(perfil.getCedula())
                 .build();
     }
 
-    public LoginResponseDTO loginGooglePorCorreo(String correo) {
-        Usuario usuario = usuarioRepository.findByCorreo(correo)
-                .orElseThrow(() -> new org.springframework.security.access.AccessDeniedException("No tienes una cuenta registrada en el sistema."));
+    @Transactional
+    public RegistroResponseDTO registrar(RegistroRequestDTO req) {
+        var user = sessionVerifier.verify(req.getAppwriteJwt());
 
-        if (Boolean.FALSE.equals(usuario.getActivo())) {
-            throw new org.springframework.security.access.AccessDeniedException("Cuenta desactivada.");
+        if (req.getRolSolicitado() == RolSolicitado.ADMINISTRADOR) {
+            throw new AuthException("Rol no permitido.");
         }
 
-        usuario.setFechaUltimoAcceso(LocalDateTime.now());
-        usuarioRepository.save(usuario);
+        if (perfilRepository.findByAppwriteUserId(user.id()).isPresent()) {
+            throw new AuthException("Solicitud ya registrada.");
+        }
 
-        String token = jwtTokenProvider.generarToken(usuario.getCorreo(), usuario.getRolSistema().name(), usuario.getNombre());
-        return LoginResponseDTO.builder()
-                .token(token)
-                .tipo("Bearer")
-                .expiraEn(jwtTokenProvider.getExpirationSeconds())
-                .rol(usuario.getRolSistema())
-                .nombre(usuario.getNombre())
-                .correo(usuario.getCorreo())
-                .debeCambiarContrasena(Boolean.TRUE.equals(usuario.getDebeCambiarContrasena()))
+        Perfil perfil = Perfil.builder()
+                .appwriteUserId(user.id())
+                .cedula(req.getCedula().trim())
+                .rolSolicitado(req.getRolSolicitado())
+                .estado(EstadoRegistro.PENDIENTE)
+                .fechaSolicitud(LocalDateTime.now())
+                .correo(user.email())
+                .nombre(user.name())
+                .build();
+        perfilRepository.save(perfil);
+
+        return RegistroResponseDTO.builder()
+                .estado("PENDIENTE")
+                .mensaje("Solicitud enviada. Espera aprobacion del admin.")
                 .build();
     }
 
-    public void cambiarContrasena(String correo, String contrasenaActual, String contrasenaNueva) {
-        Usuario usuario = usuarioRepository.findByCorreo(correo)
-                .orElseThrow(() -> new AuthException("Usuario no encontrado."));
+    public TokenResponseDTO refresh(Jwt jwt) {
+        var userId = jwt.getSubject();
+        var cedula = jwt.getClaimAsString("cedula");
+        var email = jwt.getClaimAsString("email");
+        var nombre = jwt.getClaimAsString("nombre");
+        var roles = jwt.getClaimAsStringList("roles");
 
-        if (contrasenaNueva == null || contrasenaNueva.length() < 8) {
-            throw new AuthException("La nueva contrasena debe tener al menos 8 caracteres.");
-        }
-
-        if (!passwordEncoder.matches(contrasenaActual, usuario.getContrasena())) {
-            throw new AuthException("La contrasena actual es incorrecta.");
-        }
-
-        usuario.setContrasena(passwordEncoder.encode(contrasenaNueva));
-        usuario.setDebeCambiarContrasena(false);
-        usuarioRepository.save(usuario);
-    }
-
-    public void registrarEventoRecuperacion(String correo) {
-        log.info("Evento recuperar contraseÃ±a recibido para correo={}", correo);
+        var token = jwtTokenProvider.generarToken(userId, cedula, email, nombre, roles);
+        return TokenResponseDTO.builder()
+                .token(token)
+                .expiraEn(jwtTokenProvider.getTtlSeconds())
+                .roles(roles)
+                .nombre(nombre)
+                .correo(email)
+                .cedula(cedula)
+                .build();
     }
 }
 

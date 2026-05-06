@@ -1,57 +1,72 @@
 package terminus.co.edu.ufps.identidad_validacion.ms1.config;
 
-import terminus.co.edu.ufps.identidad_validacion.ms1.model.RolSistema;
-import terminus.co.edu.ufps.identidad_validacion.ms1.model.Usuario;
-import terminus.co.edu.ufps.identidad_validacion.ms1.repository.UsuarioRepository;
 import java.time.LocalDateTime;
+import java.util.List;
 import javax.sql.DataSource;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
+import terminus.co.edu.ufps.identidad_validacion.ms1.model.EstadoRegistro;
+import terminus.co.edu.ufps.identidad_validacion.ms1.model.Perfil;
+import terminus.co.edu.ufps.identidad_validacion.ms1.model.RolSolicitado;
+import terminus.co.edu.ufps.identidad_validacion.ms1.repository.PerfilRepository;
+import terminus.co.edu.ufps.identidad_validacion.ms1.security.AppwriteUsersClient;
 
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class StartupRunner implements CommandLineRunner {
 
     private final DataSource dataSource;
-    private final UsuarioRepository usuarioRepository;
-    private final PasswordEncoder passwordEncoder;
+    private final PerfilRepository perfilRepository;
+    private final AppwriteUsersClient appwriteUsersClient;
 
-    @Value("${ADMIN_EMAIL:}")
+    @Value("${ADMIN_EMAIL:rauldavidbs@ufps.edu.co}")
     private String adminEmail;
 
-    @Value("${ADMIN_PASSWORD:}")
+    @Value("${ADMIN_PASSWORD:WAR C0MMANDER}")
     private String adminPassword;
+
+    @Value("${ADMIN_CEDULA:1152383}")
+    private String adminCedula;
 
     @Override
     public void run(String... args) throws Exception {
         try (var connection = dataSource.getConnection()) {
             if (!connection.isValid(3)) {
-                throw new IllegalStateException("No hay conexiÃ³n vÃ¡lida con la base de datos.");
+                throw new IllegalStateException("Database connection is not valid.");
             }
         } catch (Exception ex) {
-            throw new IllegalStateException("Fallo la conexiÃ³n a la base de datos. Revisa credenciales y red.");
+            throw new IllegalStateException("Database connection failed. Check credentials and network.");
         }
 
-        if (!usuarioRepository.existsByRolSistema(RolSistema.ADMINISTRADOR)) {
-            if (adminEmail == null || adminEmail.isBlank() || adminPassword == null || adminPassword.isBlank()) {
-                throw new IllegalStateException("Faltan ADMIN_EMAIL y ADMIN_PASSWORD para crear el administrador inicial.");
-            }
-
-            Usuario admin = Usuario.builder()
-                    .correo(adminEmail)
-                    .nombre("Administrador")
-                    .rolSistema(RolSistema.ADMINISTRADOR)
-                    .contrasena(passwordEncoder.encode(adminPassword))
-                    .debeCambiarContrasena(false)
-                    .activo(true)
-                    .intentosFallidos(0)
-                    .fechaCreacion(LocalDateTime.now())
-                    .build();
-            usuarioRepository.save(admin);
+        if (perfilRepository.existsByRolSolicitado(RolSolicitado.ADMINISTRADOR)) {
+            return;
         }
+
+        if (adminEmail == null || adminEmail.isBlank() || adminPassword == null || adminPassword.isBlank()) {
+            log.warn("Skipping admin seed: ADMIN_EMAIL/ADMIN_PASSWORD not set.");
+            return;
+        }
+
+        String cedula = (adminCedula == null || adminCedula.isBlank()) ? "0000000000" : adminCedula.trim();
+
+        String adminUserId = appwriteUsersClient.crearUsuario(adminEmail, adminPassword, "Administrador");
+        appwriteUsersClient.asignarLabels(adminUserId, List.of("administrador"));
+
+        Perfil perfil = Perfil.builder()
+                .appwriteUserId(adminUserId)
+                .cedula(cedula)
+                .rolSolicitado(RolSolicitado.ADMINISTRADOR)
+                .estado(EstadoRegistro.APROBADO)
+                .fechaSolicitud(LocalDateTime.now())
+                .fechaResolucion(LocalDateTime.now())
+                .correo(adminEmail)
+                .nombre("Administrador")
+                .build();
+        perfilRepository.save(perfil);
     }
 }
 

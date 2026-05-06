@@ -1,19 +1,16 @@
 package terminus.co.edu.ufps.identidad_validacion.ms1.dto;
 
-import terminus.co.edu.ufps.identidad_validacion.ms1.model.RolSistema;
+import java.util.List;
 import lombok.Builder;
 import lombok.Data;
 
 @Data
 @Builder
-public class LoginResponseDTO {
-
+public class TokenResponseDTO {
     private String token;
-    private String tipo;
     private long expiraEn;
-    private RolSistema rol;
+    private List<String> roles;
     private String nombre;
     private String correo;
-    private Boolean debeCambiarContrasena;
+    private String cedula;
 }
-

@@ -5,9 +5,7 @@ import lombok.Data;
 
 @Data
 @Builder
-public class CrearUsuarioResponseDTO {
-
-    private UsuarioDTO usuario;
+public class RegistroResponseDTO {
+    private String estado;
     private String mensaje;
 }
-

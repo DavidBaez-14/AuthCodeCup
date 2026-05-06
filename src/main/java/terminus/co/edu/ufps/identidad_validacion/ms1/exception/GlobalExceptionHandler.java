@@ -38,11 +38,6 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.NOT_FOUND, "No encontrado", ex.getMessage(), req.getRequestURI());
     }
 
-    @ExceptionHandler(CuentaBloqueadaException.class)
-    public ResponseEntity<ApiErrorResponse> handleBlocked(CuentaBloqueadaException ex, HttpServletRequest req) {
-        return build(HttpStatus.TOO_MANY_REQUESTS, "Demasiados intentos", ex.getMessage(), req.getRequestURI());
-    }
-
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiErrorResponse> handleValidation(MethodArgumentNotValidException ex, HttpServletRequest req) {
         String mensaje = ex.getBindingResult().getFieldErrors().stream()

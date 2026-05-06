@@ -36,6 +36,15 @@ public class Jugador {
     @Column(name = "codigo_universitario", length = 20)
     private String codigoUniversitario;
 
+    @Column(name = "cedula_delegado", length = 20)
+    private String cedulaDelegado;
+
+    @Column(name = "correo_delegado", length = 150)
+    private String correoDelegado;
+
+    @Column(name = "nombre_delegado", length = 150)
+    private String nombreDelegado;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "rol_jugador", nullable = false, length = 20)
     private RolJugador rolJugador;

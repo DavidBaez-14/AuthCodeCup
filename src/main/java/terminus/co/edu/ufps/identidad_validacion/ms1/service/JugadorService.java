@@ -1,7 +1,9 @@
 package terminus.co.edu.ufps.identidad_validacion.ms1.service;
 
+import terminus.co.edu.ufps.identidad_validacion.ms1.dto.ContactoDelegadoDTO;
 import terminus.co.edu.ufps.identidad_validacion.ms1.dto.JugadorDTO;
 import terminus.co.edu.ufps.identidad_validacion.ms1.exception.CedulaNotFoundException;
+import terminus.co.edu.ufps.identidad_validacion.ms1.exception.ResourceNotFoundException;
 import terminus.co.edu.ufps.identidad_validacion.ms1.model.RolJugador;
 import terminus.co.edu.ufps.identidad_validacion.ms1.repository.JugadorRepository;
 import lombok.RequiredArgsConstructor;
@@ -33,6 +35,23 @@ public class JugadorService {
         return jugadorRepository.findByCedula(cedula)
                 .map(JugadorDTO::fromEntity)
                 .orElseThrow(() -> new CedulaNotFoundException("Cedula no encontrada en la base de la facultad."));
+    }
+
+    public ContactoDelegadoDTO buscarContactoDelegadoDeJugador(String cedula) {
+        var jugador = jugadorRepository.findByCedula(cedula)
+                .orElseThrow(() -> new CedulaNotFoundException("Cedula no encontrada en la base de la facultad."));
+
+        if (jugador.getCedulaDelegado() == null
+                && jugador.getCorreoDelegado() == null
+                && jugador.getNombreDelegado() == null) {
+            throw new ResourceNotFoundException("Delegado no asignado.");
+        }
+
+        return ContactoDelegadoDTO.builder()
+                .cedulaDelegado(jugador.getCedulaDelegado())
+                .correoDelegado(jugador.getCorreoDelegado())
+                .nombreDelegado(jugador.getNombreDelegado())
+                .build();
     }
 }
 

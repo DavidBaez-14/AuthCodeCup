@@ -12,6 +12,9 @@ public class JugadorDTO {
     private String cedula;
     private String nombre;
     private String codigoUniversitario;
+    private String cedulaDelegado;
+    private String correoDelegado;
+    private String nombreDelegado;
     private RolJugador rolJugador;
     private Integer semestre;
     private Boolean activo;
@@ -21,6 +24,9 @@ public class JugadorDTO {
                 .cedula(jugador.getCedula())
                 .nombre(jugador.getNombre())
                 .codigoUniversitario(jugador.getCodigoUniversitario())
+                .cedulaDelegado(jugador.getCedulaDelegado())
+                .correoDelegado(jugador.getCorreoDelegado())
+                .nombreDelegado(jugador.getNombreDelegado())
                 .rolJugador(jugador.getRolJugador())
                 .semestre(jugador.getSemestre())
                 .activo(jugador.getActivo())
