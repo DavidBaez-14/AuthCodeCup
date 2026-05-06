@@ -23,6 +23,11 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.UNAUTHORIZED, "No autorizado", ex.getMessage(), req.getRequestURI());
     }
 
+    @ExceptionHandler(BadRequestException.class)
+    public ResponseEntity<ApiErrorResponse> handleBadRequest(BadRequestException ex, HttpServletRequest req) {
+        return build(HttpStatus.BAD_REQUEST, "Solicitud invalida", ex.getMessage(), req.getRequestURI());
+    }
+
     @ExceptionHandler(AccessDeniedException.class)
     public ResponseEntity<ApiErrorResponse> handleForbidden(AccessDeniedException ex, HttpServletRequest req) {
         return build(HttpStatus.FORBIDDEN, "Acceso denegado", ex.getMessage(), req.getRequestURI());
