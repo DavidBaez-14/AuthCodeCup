@@ -19,6 +19,9 @@ public class CsvResultadoDTO {
     private int rechazados = 0;
 
     @Builder.Default
+    private int autoAprobados = 0;
+
+    @Builder.Default
     private List<ErrorFilaDTO> errores = new ArrayList<>();
 
     @Data

@@ -45,7 +45,12 @@ public class AppwriteUsersClient {
         return (String) body.get("$id");
     }
 
-    public void asignarLabels(String userId, List<String> labels) {
+    /**
+     * Reemplaza la lista completa de labels del usuario en Appwrite.
+     * El PUT a /users/{id}/labels NO acumula: lo que envíes sustituye lo existente.
+     * La fuente de verdad de los roles es la DB; este método sólo refleja.
+     */
+    public void setLabels(String userId, List<String> labels) {
         client.put()
                 .uri(endpoint + "/users/" + userId + "/labels")
                 .headers(this::serverHeaders)

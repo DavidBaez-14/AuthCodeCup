@@ -31,7 +31,7 @@ public class SecurityConfig {
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/.well-known/jwks.json").permitAll()
-                        .requestMatchers("/api/auth/exchange", "/api/auth/registrar", "/api/auth/registrar-jugador").permitAll()
+                        .requestMatchers("/api/auth/exchange", "/api/auth/solicitar-rol").permitAll()
                         .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .anyRequest().authenticated())

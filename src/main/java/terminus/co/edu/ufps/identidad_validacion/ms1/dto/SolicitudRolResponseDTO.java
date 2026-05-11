@@ -5,7 +5,11 @@ import lombok.Data;
 
 @Data
 @Builder
-public class RegistroResponseDTO {
+public class SolicitudRolResponseDTO {
+
     private String estado;
+
     private String mensaje;
+
+    private TokenResponseDTO token;
 }

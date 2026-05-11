@@ -12,9 +12,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import terminus.co.edu.ufps.identidad_validacion.ms1.dto.ExchangeRequestDTO;
-import terminus.co.edu.ufps.identidad_validacion.ms1.dto.RegistroJugadorRequestDTO;
-import terminus.co.edu.ufps.identidad_validacion.ms1.dto.RegistroRequestDTO;
-import terminus.co.edu.ufps.identidad_validacion.ms1.dto.RegistroResponseDTO;
+import terminus.co.edu.ufps.identidad_validacion.ms1.dto.SolicitarRolRequestDTO;
+import terminus.co.edu.ufps.identidad_validacion.ms1.dto.SolicitudRolResponseDTO;
 import terminus.co.edu.ufps.identidad_validacion.ms1.dto.TokenResponseDTO;
 import terminus.co.edu.ufps.identidad_validacion.ms1.service.AuthService;
 
@@ -31,14 +30,9 @@ public class AuthController {
         return ResponseEntity.ok(authService.exchange(req.getAppwriteJwt()));
     }
 
-    @PostMapping("/registrar")
-    public ResponseEntity<RegistroResponseDTO> registrar(@Valid @RequestBody RegistroRequestDTO req) {
-        return ResponseEntity.ok(authService.registrar(req));
-    }
-
-    @PostMapping("/registrar-jugador")
-    public ResponseEntity<TokenResponseDTO> registrarJugador(@Valid @RequestBody RegistroJugadorRequestDTO req) {
-        return ResponseEntity.ok(authService.registrarJugador(req));
+    @PostMapping("/solicitar-rol")
+    public ResponseEntity<SolicitudRolResponseDTO> solicitarRol(@Valid @RequestBody SolicitarRolRequestDTO req) {
+        return ResponseEntity.ok(authService.solicitarRol(req));
     }
 
     @PostMapping("/refresh")
@@ -47,4 +41,3 @@ public class AuthController {
         return ResponseEntity.ok(authService.refresh(jwt));
     }
 }
-

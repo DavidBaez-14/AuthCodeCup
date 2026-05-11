@@ -8,10 +8,12 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.stereotype.Component;
-import terminus.co.edu.ufps.identidad_validacion.ms1.model.EstadoRegistro;
-import terminus.co.edu.ufps.identidad_validacion.ms1.model.Perfil;
-import terminus.co.edu.ufps.identidad_validacion.ms1.model.RolSolicitado;
-import terminus.co.edu.ufps.identidad_validacion.ms1.repository.PerfilRepository;
+import terminus.co.edu.ufps.identidad_validacion.ms1.model.Cuenta;
+import terminus.co.edu.ufps.identidad_validacion.ms1.model.CuentaRol;
+import terminus.co.edu.ufps.identidad_validacion.ms1.model.EstadoRol;
+import terminus.co.edu.ufps.identidad_validacion.ms1.model.Rol;
+import terminus.co.edu.ufps.identidad_validacion.ms1.repository.CuentaRepository;
+import terminus.co.edu.ufps.identidad_validacion.ms1.repository.CuentaRolRepository;
 import terminus.co.edu.ufps.identidad_validacion.ms1.security.AppwriteUsersClient;
 
 @Slf4j
@@ -20,7 +22,8 @@ import terminus.co.edu.ufps.identidad_validacion.ms1.security.AppwriteUsersClien
 public class StartupRunner implements CommandLineRunner {
 
     private final DataSource dataSource;
-    private final PerfilRepository perfilRepository;
+    private final CuentaRepository cuentaRepository;
+    private final CuentaRolRepository cuentaRolRepository;
     private final AppwriteUsersClient appwriteUsersClient;
 
     @Value("${ADMIN_EMAIL:rauldavidbs@ufps.edu.co}")
@@ -42,7 +45,7 @@ public class StartupRunner implements CommandLineRunner {
             throw new IllegalStateException("Database connection failed. Check credentials and network.");
         }
 
-        if (perfilRepository.existsByRolSolicitado(RolSolicitado.ADMINISTRADOR)) {
+        if (cuentaRolRepository.existsByRol(Rol.ADMINISTRADOR)) {
             return;
         }
 
@@ -54,19 +57,22 @@ public class StartupRunner implements CommandLineRunner {
         String cedula = (adminCedula == null || adminCedula.isBlank()) ? "0000000000" : adminCedula.trim();
 
         String adminUserId = appwriteUsersClient.crearUsuario(adminEmail, adminPassword, "Administrador");
-        appwriteUsersClient.asignarLabels(adminUserId, List.of("administrador"));
+        appwriteUsersClient.setLabels(adminUserId, List.of("administrador"));
 
-        Perfil perfil = Perfil.builder()
+        var cuenta = cuentaRepository.save(Cuenta.builder()
                 .appwriteUserId(adminUserId)
                 .cedula(cedula)
-                .rolSolicitado(RolSolicitado.ADMINISTRADOR)
-                .estado(EstadoRegistro.APROBADO)
-                .fechaSolicitud(LocalDateTime.now())
-                .fechaResolucion(LocalDateTime.now())
                 .correo(adminEmail)
                 .nombre("Administrador")
-                .build();
-        perfilRepository.save(perfil);
+                .fechaCreacion(LocalDateTime.now())
+                .build());
+
+        cuentaRolRepository.save(CuentaRol.builder()
+                .cuenta(cuenta)
+                .rol(Rol.ADMINISTRADOR)
+                .estado(EstadoRol.APROBADO)
+                .fechaSolicitud(LocalDateTime.now())
+                .fechaResolucion(LocalDateTime.now())
+                .build());
     }
 }
-

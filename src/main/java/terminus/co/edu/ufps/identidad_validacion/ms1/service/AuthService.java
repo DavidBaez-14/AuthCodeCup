@@ -2,23 +2,24 @@ package terminus.co.edu.ufps.identidad_validacion.ms1.service;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import terminus.co.edu.ufps.identidad_validacion.ms1.dto.RegistroJugadorRequestDTO;
-import terminus.co.edu.ufps.identidad_validacion.ms1.dto.RegistroRequestDTO;
-import terminus.co.edu.ufps.identidad_validacion.ms1.dto.RegistroResponseDTO;
+import terminus.co.edu.ufps.identidad_validacion.ms1.dto.SolicitarRolRequestDTO;
+import terminus.co.edu.ufps.identidad_validacion.ms1.dto.SolicitudRolResponseDTO;
 import terminus.co.edu.ufps.identidad_validacion.ms1.dto.TokenResponseDTO;
 import terminus.co.edu.ufps.identidad_validacion.ms1.exception.AuthException;
 import terminus.co.edu.ufps.identidad_validacion.ms1.exception.BadRequestException;
-import terminus.co.edu.ufps.identidad_validacion.ms1.model.EstadoRegistro;
-import terminus.co.edu.ufps.identidad_validacion.ms1.model.JugadorAuth;
-import terminus.co.edu.ufps.identidad_validacion.ms1.model.Perfil;
+import terminus.co.edu.ufps.identidad_validacion.ms1.model.Cuenta;
+import terminus.co.edu.ufps.identidad_validacion.ms1.model.CuentaRol;
+import terminus.co.edu.ufps.identidad_validacion.ms1.model.EstadoRol;
+import terminus.co.edu.ufps.identidad_validacion.ms1.model.Rol;
 import terminus.co.edu.ufps.identidad_validacion.ms1.model.RolJugador;
-import terminus.co.edu.ufps.identidad_validacion.ms1.model.RolSolicitado;
-import terminus.co.edu.ufps.identidad_validacion.ms1.repository.JugadorAuthRepository;
-import terminus.co.edu.ufps.identidad_validacion.ms1.repository.PerfilRepository;
+import terminus.co.edu.ufps.identidad_validacion.ms1.repository.CuentaRepository;
+import terminus.co.edu.ufps.identidad_validacion.ms1.repository.CuentaRolRepository;
+import terminus.co.edu.ufps.identidad_validacion.ms1.repository.JugadorRepository;
 import terminus.co.edu.ufps.identidad_validacion.ms1.security.AppwriteSessionVerifier;
 import terminus.co.edu.ufps.identidad_validacion.ms1.security.AppwriteUsersClient;
 import terminus.co.edu.ufps.identidad_validacion.ms1.security.JwtTokenProvider;
@@ -29,163 +30,163 @@ public class AuthService {
 
     private final AppwriteSessionVerifier sessionVerifier;
     private final JwtTokenProvider jwtTokenProvider;
-    private final PerfilRepository perfilRepository;
-    private final JugadorAuthRepository jugadorAuthRepository;
+    private final CuentaRepository cuentaRepository;
+    private final CuentaRolRepository cuentaRolRepository;
+    private final JugadorRepository jugadorRepository;
     private final AppwriteUsersClient appwriteUsersClient;
 
     @Transactional(readOnly = true)
     public TokenResponseDTO exchange(String appwriteJwt) {
         var user = sessionVerifier.verify(appwriteJwt);
-        var rolesValidos = user.labels().stream()
-                .filter(l -> List.of("administrador", "arbitro", "delegado", "jugador").contains(l))
-                .toList();
 
-        if (rolesValidos.isEmpty()) {
-            throw new AuthException("Usuario sin rol asignado.");
+        var cuenta = cuentaRepository.findByAppwriteUserId(user.id())
+                .orElseThrow(() -> new AuthException("Cuenta no registrada."));
+
+        var rolesAprobados = leerRolesAprobados(cuenta.getId());
+        if (rolesAprobados.isEmpty()) {
+            throw new AuthException("Cuenta sin roles aprobados.");
         }
 
-        JugadorAuth jugadorAuth = null;
-        if (rolesValidos.contains("jugador")) {
-            jugadorAuth = jugadorAuthRepository.findByAppwriteUserId(user.id()).orElse(null);
-        }
-
-        String cedula;
-        if (jugadorAuth != null) {
-            cedula = jugadorAuth.getCedula();
-        } else {
-            var perfil = perfilRepository.findByAppwriteUserId(user.id())
-                    .orElseThrow(() -> new AuthException("Perfil no registrado."));
-
-            if (perfil.getEstado() != EstadoRegistro.APROBADO) {
-                throw new AuthException("Perfil pendiente de aprobacion.");
-            }
-            cedula = perfil.getCedula();
-        }
-
-        var token = jwtTokenProvider.generarToken(
-                user.id(),
-                cedula,
-                user.email(),
-                user.name(),
-                rolesValidos);
-
-        return TokenResponseDTO.builder()
-                .token(token)
-                .expiraEn(jwtTokenProvider.getTtlSeconds())
-                .roles(rolesValidos)
-                .nombre(user.name())
-                .correo(user.email())
-            .cedula(cedula)
-                .build();
+        return emitirToken(cuenta, rolesAprobados);
     }
 
     @Transactional
-    public RegistroResponseDTO registrar(RegistroRequestDTO req) {
-        var user = sessionVerifier.verify(req.getAppwriteJwt());
-
-        if (req.getRolSolicitado() == RolSolicitado.ADMINISTRADOR) {
+    public SolicitudRolResponseDTO solicitarRol(SolicitarRolRequestDTO req) {
+        if (req.getRol() == Rol.ADMINISTRADOR) {
             throw new AuthException("Rol no permitido.");
         }
 
-        if (perfilRepository.findByAppwriteUserId(user.id()).isPresent()) {
-            throw new AuthException("Solicitud ya registrada.");
+        var user = sessionVerifier.verify(req.getAppwriteJwt());
+        String cedula = req.getCedula().trim();
+
+        var cuenta = cuentaRepository.findByAppwriteUserId(user.id())
+                .orElseGet(() -> crearCuenta(user.id(), cedula, user.email(), user.name()));
+
+        if (!cuenta.getCedula().equals(cedula)) {
+            throw new BadRequestException("La cédula no coincide con la registrada para esta cuenta.");
         }
 
-        Perfil perfil = Perfil.builder()
-                .appwriteUserId(user.id())
-                .cedula(req.getCedula().trim())
-                .rolSolicitado(req.getRolSolicitado())
-                .estado(EstadoRegistro.PENDIENTE)
-                .fechaSolicitud(LocalDateTime.now())
-                .correo(user.email())
-                .nombre(user.name())
-                .build();
-        perfilRepository.save(perfil);
+        if (cuentaRolRepository.existsByCuentaIdAndRol(cuenta.getId(), req.getRol())) {
+            throw new AuthException("Ya tienes una solicitud para ese rol.");
+        }
 
-        return RegistroResponseDTO.builder()
-                .estado("PENDIENTE")
-                .mensaje("Solicitud enviada. Espera aprobacion del admin.")
+        var builder = CuentaRol.builder()
+                .cuenta(cuenta)
+                .rol(req.getRol())
+                .fechaSolicitud(LocalDateTime.now())
+                .motivoSolicitud(trimOrNull(req.getMotivoSolicitud()));
+
+        if (req.getRol() == Rol.JUGADOR) {
+            validarCamposJugador(req);
+            boolean esEstudiante = req.getRolJugador() == RolJugador.ESTUDIANTE;
+            builder.rolJugador(req.getRolJugador())
+                    .codigoUniversitario(esEstudiante ? trimOrNull(req.getCodigoUniversitario()) : null)
+                    .semestre(esEstudiante ? req.getSemestre() : null);
+
+            boolean enPadron = jugadorRepository.findByCedula(cedula).isPresent();
+            if (enPadron) {
+                builder.estado(EstadoRol.APROBADO).fechaResolucion(LocalDateTime.now());
+            } else {
+                builder.estado(EstadoRol.PENDIENTE_VALIDACION);
+            }
+        } else {
+            builder.estado(EstadoRol.PENDIENTE);
+        }
+
+        var cuentaRol = cuentaRolRepository.save(builder.build());
+
+        if (cuentaRol.getEstado() == EstadoRol.APROBADO) {
+            var rolesAprobados = sincronizarLabels(cuenta);
+            return SolicitudRolResponseDTO.builder()
+                    .estado(cuentaRol.getEstado().name())
+                    .mensaje("Cuenta de jugador activa.")
+                    .token(emitirToken(cuenta, rolesAprobados))
+                    .build();
+        }
+
+        String mensaje = cuentaRol.getEstado() == EstadoRol.PENDIENTE_VALIDACION
+                ? "Tu cédula no aparece en el padrón. Un administrador revisará tu caso."
+                : "Solicitud enviada. Espera aprobación del administrador.";
+
+        return SolicitudRolResponseDTO.builder()
+                .estado(cuentaRol.getEstado().name())
+                .mensaje(mensaje)
                 .build();
     }
 
-    @Transactional
-    public TokenResponseDTO registrarJugador(RegistroJugadorRequestDTO req) {
-        var user = sessionVerifier.verify(req.getAppwriteJwt());
+    @Transactional(readOnly = true)
+    public TokenResponseDTO refresh(Jwt jwt) {
+        var cuenta = cuentaRepository.findByAppwriteUserId(jwt.getSubject())
+                .orElseThrow(() -> new AuthException("Cuenta no registrada."));
 
-        if (jugadorAuthRepository.existsByAppwriteUserId(user.id())) {
-            throw new AuthException("Perfil ya registrado.");
+        var rolesAprobados = leerRolesAprobados(cuenta.getId());
+        if (rolesAprobados.isEmpty()) {
+            throw new AuthException("Cuenta sin roles aprobados.");
         }
 
-        String cedula = req.getCedula().trim();
-        if (jugadorAuthRepository.existsByCedula(cedula)) {
-            throw new AuthException("Cedula ya registrada.");
-        }
+        return emitirToken(cuenta, rolesAprobados);
+    }
 
-        String codigoUniversitario = req.getCodigoUniversitario();
-        Integer semestre = req.getSemestre();
+    private Cuenta crearCuenta(String appwriteUserId, String cedula, String correo, String nombre) {
+        if (cuentaRepository.existsByCedula(cedula)) {
+            throw new AuthException("Esa cédula ya tiene una cuenta asociada.");
+        }
+        return cuentaRepository.save(Cuenta.builder()
+                .appwriteUserId(appwriteUserId)
+                .cedula(cedula)
+                .correo(correo)
+                .nombre(nombre)
+                .fechaCreacion(LocalDateTime.now())
+                .build());
+    }
+
+    private void validarCamposJugador(SolicitarRolRequestDTO req) {
         if (req.getRolJugador() == null) {
             throw new BadRequestException("Rol del jugador es obligatorio.");
         }
         if (req.getRolJugador() == RolJugador.ESTUDIANTE) {
-            if (codigoUniversitario == null || codigoUniversitario.isBlank()) {
-                throw new BadRequestException("El codigo estudiantil es obligatorio.");
+            if (req.getCodigoUniversitario() == null || req.getCodigoUniversitario().isBlank()) {
+                throw new BadRequestException("El código estudiantil es obligatorio.");
             }
-            if (semestre == null || semestre < 1) {
+            if (req.getSemestre() == null || req.getSemestre() < 1) {
                 throw new BadRequestException("El semestre actual es obligatorio.");
             }
-        } else {
-            codigoUniversitario = null;
-            semestre = null;
         }
+    }
 
-        JugadorAuth jugadorAuth = JugadorAuth.builder()
-                .appwriteUserId(user.id())
-                .cedula(cedula)
-                .rolJugador(req.getRolJugador())
-                .codigoUniversitario(codigoUniversitario == null ? null : codigoUniversitario.trim())
-                .semestre(semestre)
-                .nombre(user.name())
-                .correo(user.email())
-                .fechaRegistro(LocalDateTime.now())
-                .build();
-        jugadorAuthRepository.save(jugadorAuth);
+    private List<String> leerRolesAprobados(UUID cuentaId) {
+        return cuentaRolRepository.findByCuentaIdAndEstado(cuentaId, EstadoRol.APROBADO)
+                .stream()
+                .map(cr -> cr.getRol().name().toLowerCase())
+                .toList();
+    }
 
-        appwriteUsersClient.asignarLabels(user.id(), List.of("jugador"));
+    private List<String> sincronizarLabels(Cuenta cuenta) {
+        var rolesAprobados = leerRolesAprobados(cuenta.getId());
+        appwriteUsersClient.setLabels(cuenta.getAppwriteUserId(), rolesAprobados);
+        return rolesAprobados;
+    }
 
-        var roles = List.of("jugador");
+    private TokenResponseDTO emitirToken(Cuenta cuenta, List<String> roles) {
         var token = jwtTokenProvider.generarToken(
-                user.id(),
-                cedula,
-                user.email(),
-                user.name(),
+                cuenta.getAppwriteUserId(),
+                cuenta.getCedula(),
+                cuenta.getCorreo(),
+                cuenta.getNombre(),
                 roles);
-
         return TokenResponseDTO.builder()
                 .token(token)
                 .expiraEn(jwtTokenProvider.getTtlSeconds())
                 .roles(roles)
-                .nombre(user.name())
-                .correo(user.email())
-                .cedula(cedula)
+                .nombre(cuenta.getNombre())
+                .correo(cuenta.getCorreo())
+                .cedula(cuenta.getCedula())
                 .build();
     }
 
-    public TokenResponseDTO refresh(Jwt jwt) {
-        var userId = jwt.getSubject();
-        var cedula = jwt.getClaimAsString("cedula");
-        var email = jwt.getClaimAsString("email");
-        var nombre = jwt.getClaimAsString("nombre");
-        var roles = jwt.getClaimAsStringList("roles");
-
-        var token = jwtTokenProvider.generarToken(userId, cedula, email, nombre, roles);
-        return TokenResponseDTO.builder()
-                .token(token)
-                .expiraEn(jwtTokenProvider.getTtlSeconds())
-                .roles(roles)
-                .nombre(nombre)
-                .correo(email)
-                .cedula(cedula)
-                .build();
+    private static String trimOrNull(String s) {
+        if (s == null) return null;
+        var t = s.trim();
+        return t.isEmpty() ? null : t;
     }
 }
-
