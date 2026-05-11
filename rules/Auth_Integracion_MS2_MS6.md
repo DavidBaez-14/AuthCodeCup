@@ -1,8 +1,12 @@
 # Autenticación CODE-CUP · Guía de integración para MS2–MS6
 
-> **A quién va dirigido:** quien implemente MS2 (Super-Copa), MS3 (Partido),
+> **A quién va dirigido:** quien implemente MS2 (Supercopa, ahora incluye lo que era MS3),
 > MS4 (Finanzas), MS5 (Analytics) o MS6 (Notificaciones).
 > MS1 ya está desplegado y emitiendo tokens. Esta guía explica cómo consumirlos.
+
+**Nota de arquitectura:** MS2 y MS3 se unifican en un solo microservicio llamado **supercopa**.
+Los endpoints de partidos y eventos viven en MS2, y los roles (arbitro/administrador)
+solo restringen acceso al mismo controller.
 
 ---
 
@@ -11,7 +15,7 @@
 ```
 Frontend  →  [Appwrite login]  →  POST /api/auth/exchange  →  MS1
 MS1       →  emite JWT propio RS256 (14 h)
-Frontend  →  envía ese JWT en Authorization: Bearer <token>  →  MS2, MS3, MS4, MS5, MS6
+Frontend  →  envía ese JWT en Authorization: Bearer <token>  →  MS2, MS4, MS5, MS6
 Cada MS   →  valida el JWT LOCALMENTE usando la clave pública de MS1 (JWKS)
              SIN llamar a Appwrite ni a MS1 en cada request
 ```
@@ -24,7 +28,7 @@ Cada MS   →  valida el JWT LOCALMENTE usando la clave pública de MS1 (JWKS)
              │  Authorization: Bearer <JWT propio>
              ▼
 ┌────────────────────────────────────────────────────────────────────┐
-│  MS2 · MS3 · MS4 · MS5 (Supabase Postgres)   MS6 (Appwrite Mail)  │
+│  MS2 · MS4 · MS5 (Supabase Postgres)         MS6 (Appwrite Mail)  │
 │                                                                    │
 │  Cada uno descarga la clave pública de MS1 vía JWKS una sola vez  │
 │  y la cachea. Todas las validaciones siguientes son offline.       │
@@ -43,7 +47,7 @@ Cada MS   →  valida el JWT LOCALMENTE usando la clave pública de MS1 (JWKS)
 **Reglas que nunca se rompen:**
 - Solo MS1 tiene la API Key de Appwrite. MS2–MS6 nunca la ven.
 - El identificador universal entre microservicios es la **cédula** (viene en el JWT).
-- MS2–MS5 nunca llaman a MS1 para autenticar un request. Solo validan el JWT localmente.
+- MS2, MS4 y MS5 nunca llaman a MS1 para autenticar un request. Solo validan el JWT localmente.
 - MS6 es el único que habla con Appwrite (solo para enviar correos, no para autenticar).
 
 ---
@@ -135,7 +139,7 @@ public ResponseEntity<?> miPerfil(@AuthenticationPrincipal Jwt jwt) {
 
 ---
 
-## 3. Qué agregar a cada microservicio (MS2–MS5)
+## 3. Qué agregar a cada microservicio (MS2, MS4, MS5)
 
 Son exactamente 3 pasos: dependencia, properties y SecurityConfig.
 Nada de Appwrite, nada de llamadas a MS1.
@@ -225,7 +229,7 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                 // ── PONER AQUÍ LOS ENDPOINTS PÚBLICOS DEL MS ──────────────────
                 // Ejemplo para MS5: .requestMatchers(HttpMethod.GET, "/api/analytics/**").permitAll()
-                // Ejemplo para MS3: .requestMatchers(HttpMethod.GET, "/api/partidos/*/eventos").permitAll()
+                // Ejemplo para MS2: .requestMatchers(HttpMethod.GET, "/api/partidos/*/eventos").permitAll()
                 // ── TODO LO DEMÁS REQUIERE JWT VÁLIDO ─────────────────────────
                 .anyRequest().authenticated()
             )
