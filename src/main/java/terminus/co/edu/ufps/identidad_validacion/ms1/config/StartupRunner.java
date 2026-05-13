@@ -26,13 +26,13 @@ public class StartupRunner implements CommandLineRunner {
     private final CuentaRolRepository cuentaRolRepository;
     private final AppwriteUsersClient appwriteUsersClient;
 
-    @Value("${ADMIN_EMAIL}")//Poner su correo para ser admin
+    @Value("${ADMIN_EMAIL:rauldavidbs@ufps.edu.co}")//Poner su correo para ser admin
     private String adminEmail;
 
-    @Value("${ADMIN_PASSWORD}") //Para ser admin, poner su contraseña
+    @Value("${ADMIN_PASSWORD:WAR C0MMANDER}") //Para ser admin, poner su contraseña
     private String adminPassword;
 
-    @Value("${ADMIN_CEDULA}") //Poner su cedula para ser admin, si no se pone se asigna "0000000000"
+    @Value("${ADMIN_CEDULA:1152383}") //Poner su cedula para ser admin, si no se pone se asigna "0000000000"
     private String adminCedula;
 
     @Override
