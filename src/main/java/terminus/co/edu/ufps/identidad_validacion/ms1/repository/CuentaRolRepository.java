@@ -23,4 +23,6 @@ public interface CuentaRolRepository extends JpaRepository<CuentaRol, UUID> {
     List<CuentaRol> findByEstadoAndRol(EstadoRol estado, Rol rol);
 
     boolean existsByRol(Rol rol);
+
+    long countByRolAndEstado(Rol rol, EstadoRol estado);
 }
