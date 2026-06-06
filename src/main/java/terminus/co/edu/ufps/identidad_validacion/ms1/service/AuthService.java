@@ -7,6 +7,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import terminus.co.edu.ufps.identidad_validacion.ms1.dto.PadronPreviewDTO;
 import terminus.co.edu.ufps.identidad_validacion.ms1.dto.SolicitarRolRequestDTO;
 import terminus.co.edu.ufps.identidad_validacion.ms1.dto.SolicitudRolResponseDTO;
 import terminus.co.edu.ufps.identidad_validacion.ms1.dto.TokenResponseDTO;
@@ -50,6 +51,19 @@ public class AuthService {
         return emitirToken(cuenta, rolesAprobados);
     }
 
+    @Transactional(readOnly = true)
+    public PadronPreviewDTO previewPadron(String cedula) {
+        var jugador = jugadorRepository.findByCedula(cedula.trim()).orElse(null);
+        if (jugador == null) {
+            return PadronPreviewDTO.builder().enPadron(false).build();
+        }
+        return PadronPreviewDTO.builder()
+                .enPadron(true)
+                .esEstudiante(jugador.getRolJugador() == RolJugador.ESTUDIANTE)
+                .nombre(jugador.getNombre())
+                .build();
+    }
+
     @Transactional
     public SolicitudRolResponseDTO solicitarRol(SolicitarRolRequestDTO req) {
         if (req.getRol() == Rol.ADMINISTRADOR) {
@@ -77,17 +91,24 @@ public class AuthService {
                 .motivoSolicitud(trimOrNull(req.getMotivoSolicitud()));
 
         if (req.getRol() == Rol.JUGADOR) {
-            validarCamposJugador(req);
-            boolean esEstudiante = req.getRolJugador() == RolJugador.ESTUDIANTE;
-            builder.rolJugador(req.getRolJugador())
-                    .codigoUniversitario(esEstudiante ? trimOrNull(req.getCodigoUniversitario()) : null)
-                    .semestre(esEstudiante ? req.getSemestre() : null);
+            var jugadorPadron = jugadorRepository.findByCedula(cedula).orElse(null);
 
-            boolean enPadron = jugadorRepository.findByCedula(cedula).isPresent();
-            if (enPadron) {
-                builder.estado(EstadoRol.APROBADO).fechaResolucion(LocalDateTime.now());
+            if (jugadorPadron != null) {
+                // Fuente de verdad = padrón. Ignoramos lo que digite el frontend
+                // para evitar que el usuario altere su rol/semestre/código.
+                builder.rolJugador(jugadorPadron.getRolJugador())
+                        .codigoUniversitario(jugadorPadron.getCodigoUniversitario())
+                        .semestre(jugadorPadron.getSemestre())
+                        .estado(EstadoRol.APROBADO)
+                        .fechaResolucion(LocalDateTime.now());
             } else {
-                builder.estado(EstadoRol.PENDIENTE_VALIDACION);
+                // Cédula fuera del padrón: tomamos lo auto-reportado, lo valida un admin.
+                validarCamposJugador(req);
+                boolean esEstudiante = req.getRolJugador() == RolJugador.ESTUDIANTE;
+                builder.rolJugador(req.getRolJugador())
+                        .codigoUniversitario(esEstudiante ? trimOrNull(req.getCodigoUniversitario()) : null)
+                        .semestre(esEstudiante ? req.getSemestre() : null)
+                        .estado(EstadoRol.PENDIENTE_VALIDACION);
             }
         } else {
             builder.estado(EstadoRol.PENDIENTE);
