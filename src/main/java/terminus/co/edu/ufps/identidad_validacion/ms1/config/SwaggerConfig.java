@@ -14,7 +14,7 @@ public class SwaggerConfig {
     public OpenAPI openAPI() {
         String schemeName = "bearerAuth";
         return new OpenAPI()
-                .info(new Info().title("MS1 - Identidad y ValidaciÃ³n").version("v1"))
+                .info(new Info().title("MS1 - Identidad y Validacion").version("v1"))
                 .addSecurityItem(new SecurityRequirement().addList(schemeName))
                 .schemaRequirement(schemeName,
                         new SecurityScheme()
