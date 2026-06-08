@@ -84,54 +84,91 @@ public class AuthService {
             throw new AuthException("Ya tienes una solicitud para ese rol.");
         }
 
-        var builder = CuentaRol.builder()
-                .cuenta(cuenta)
-                .rol(req.getRol())
-                .fechaSolicitud(LocalDateTime.now())
-                .motivoSolicitud(trimOrNull(req.getMotivoSolicitud()));
+        // Regla de negocio: todo DELEGADO también es JUGADOR. Si pide DELEGADO,
+        // creamos también la solicitud de JUGADOR (a menos que ya exista).
+        boolean adjuntarJugador = req.getRol() == Rol.DELEGADO
+                && !cuentaRolRepository.existsByCuentaIdAndRol(cuenta.getId(), Rol.JUGADOR);
 
-        if (req.getRol() == Rol.JUGADOR) {
-            var jugadorPadron = jugadorRepository.findByCedula(cedula).orElse(null);
-
-            if (jugadorPadron != null) {
-                // Fuente de verdad = padrón. Ignoramos lo que digite el frontend
-                // para evitar que el usuario altere su rol/semestre/código.
-                builder.rolJugador(jugadorPadron.getRolJugador())
-                        .codigoUniversitario(jugadorPadron.getCodigoUniversitario())
-                        .semestre(jugadorPadron.getSemestre())
-                        .estado(EstadoRol.APROBADO)
-                        .fechaResolucion(LocalDateTime.now());
-            } else {
-                // Cédula fuera del padrón: tomamos lo auto-reportado, lo valida un admin.
-                validarCamposJugador(req);
-                boolean esEstudiante = req.getRolJugador() == RolJugador.ESTUDIANTE;
-                builder.rolJugador(req.getRolJugador())
-                        .codigoUniversitario(esEstudiante ? trimOrNull(req.getCodigoUniversitario()) : null)
-                        .semestre(esEstudiante ? req.getSemestre() : null)
-                        .estado(EstadoRol.PENDIENTE_VALIDACION);
-            }
-        } else {
-            builder.estado(EstadoRol.PENDIENTE);
+        CuentaRol jugadorRol = null;
+        if (req.getRol() == Rol.JUGADOR || adjuntarJugador) {
+            jugadorRol = construirCuentaRolJugador(cuenta, cedula, req);
         }
 
-        var cuentaRol = cuentaRolRepository.save(builder.build());
+        CuentaRol principalRol;
+        if (req.getRol() == Rol.JUGADOR) {
+            principalRol = jugadorRol;
+        } else {
+            principalRol = CuentaRol.builder()
+                    .cuenta(cuenta)
+                    .rol(req.getRol())
+                    .estado(EstadoRol.PENDIENTE)
+                    .fechaSolicitud(LocalDateTime.now())
+                    .motivoSolicitud(trimOrNull(req.getMotivoSolicitud()))
+                    .build();
+        }
 
-        if (cuentaRol.getEstado() == EstadoRol.APROBADO) {
-            var rolesAprobados = sincronizarLabels(cuenta);
+        if (jugadorRol != null && req.getRol() != Rol.JUGADOR) {
+            cuentaRolRepository.save(jugadorRol);
+        }
+        cuentaRolRepository.save(principalRol);
+
+        // Si algún rol quedó APROBADO (jugador con padrón válido), sincronizamos
+        // labels para que Appwrite refleje el acceso inmediato.
+        boolean algunoAprobado = principalRol.getEstado() == EstadoRol.APROBADO
+                || (jugadorRol != null && jugadorRol.getEstado() == EstadoRol.APROBADO);
+        if (algunoAprobado) {
+            sincronizarLabels(cuenta);
+        }
+
+        // El "estado" que devolvemos al frontend es el del rol que el usuario pidió,
+        // para que el flujo de UI (redirigir vs. pantalla "pendiente") se mantenga.
+        if (principalRol.getEstado() == EstadoRol.APROBADO) {
+            var rolesAprobados = leerRolesAprobados(cuenta.getId());
             return SolicitudRolResponseDTO.builder()
-                    .estado(cuentaRol.getEstado().name())
+                    .estado(principalRol.getEstado().name())
                     .mensaje("Cuenta de jugador activa.")
                     .token(emitirToken(cuenta, rolesAprobados))
                     .build();
         }
 
-        String mensaje = cuentaRol.getEstado() == EstadoRol.PENDIENTE_VALIDACION
+        String mensaje = principalRol.getEstado() == EstadoRol.PENDIENTE_VALIDACION
                 ? "Tu cédula no aparece en el padrón. Un administrador revisará tu caso."
                 : "Solicitud enviada. Espera aprobación del administrador.";
 
         return SolicitudRolResponseDTO.builder()
-                .estado(cuentaRol.getEstado().name())
+                .estado(principalRol.getEstado().name())
                 .mensaje(mensaje)
+                .build();
+    }
+
+    private CuentaRol construirCuentaRolJugador(Cuenta cuenta, String cedula, SolicitarRolRequestDTO req) {
+        var builder = CuentaRol.builder()
+                .cuenta(cuenta)
+                .rol(Rol.JUGADOR)
+                .fechaSolicitud(LocalDateTime.now())
+                .motivoSolicitud(trimOrNull(req.getMotivoSolicitud()));
+
+        var jugadorPadron = jugadorRepository.findByCedula(cedula).orElse(null);
+        if (jugadorPadron != null) {
+            // Fuente de verdad = padrón. Ignoramos lo que digite el frontend
+            // para evitar que el usuario altere su rol/semestre/código.
+            return builder
+                    .rolJugador(jugadorPadron.getRolJugador())
+                    .codigoUniversitario(jugadorPadron.getCodigoUniversitario())
+                    .semestre(jugadorPadron.getSemestre())
+                    .estado(EstadoRol.APROBADO)
+                    .fechaResolucion(LocalDateTime.now())
+                    .build();
+        }
+
+        // Cédula fuera del padrón: tomamos lo auto-reportado, lo valida un admin.
+        validarCamposJugador(req);
+        boolean esEstudiante = req.getRolJugador() == RolJugador.ESTUDIANTE;
+        return builder
+                .rolJugador(req.getRolJugador())
+                .codigoUniversitario(esEstudiante ? trimOrNull(req.getCodigoUniversitario()) : null)
+                .semestre(esEstudiante ? req.getSemestre() : null)
+                .estado(EstadoRol.PENDIENTE_VALIDACION)
                 .build();
     }
 

@@ -44,6 +44,20 @@ public class AdminRolesController {
         return ResponseEntity.noContent().build();
     }
 
+    @PostMapping("/cuenta/{cuentaId}/aprobar-todos")
+    public ResponseEntity<Void> aprobarTodos(@PathVariable UUID cuentaId) {
+        adminRolesService.aprobarTodos(cuentaId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/cuenta/{cuentaId}/rechazar-todos")
+    public ResponseEntity<Void> rechazarTodos(
+            @PathVariable UUID cuentaId,
+            @RequestBody RechazoRequestDTO req) {
+        adminRolesService.rechazarTodos(cuentaId, req.getMotivo());
+        return ResponseEntity.noContent().build();
+    }
+
     @PostMapping("/{cuentaRolId}/rechazar")
     public ResponseEntity<Void> rechazar(@PathVariable UUID cuentaRolId, @RequestBody RechazoRequestDTO req) {
         adminRolesService.rechazar(cuentaRolId, req.getMotivo());

@@ -77,6 +77,38 @@ public class AdminRolesService {
         sincronizarLabels(cr);
     }
 
+    /**
+     * Aprueba en una sola transacción todos los roles pendientes
+     * (PENDIENTE o PENDIENTE_VALIDACION) de una cuenta. Pensado para el caso
+     * donde un usuario solicita DELEGADO y se le creó automáticamente la
+     * solicitud de JUGADOR: el admin las aprueba con un click.
+     */
+    @Transactional
+    public int aprobarTodos(UUID cuentaId) {
+        var cuenta = cuentaRepository.findById(cuentaId)
+                .orElseThrow(() -> new ResourceNotFoundException("Cuenta no encontrada."));
+
+        var pendientes = cuentaRolRepository.findByCuentaId(cuenta.getId()).stream()
+                .filter(cr -> cr.getEstado() == EstadoRol.PENDIENTE
+                        || cr.getEstado() == EstadoRol.PENDIENTE_VALIDACION)
+                .toList();
+        if (pendientes.isEmpty()) {
+            throw new BadRequestException("La cuenta no tiene solicitudes pendientes.");
+        }
+
+        for (var cr : pendientes) {
+            if (cr.getEstado() == EstadoRol.PENDIENTE_VALIDACION && cr.getRol() == Rol.JUGADOR) {
+                insertarEnPadronSiHaceFalta(cr);
+            }
+            cr.setEstado(EstadoRol.APROBADO);
+            cr.setFechaResolucion(LocalDateTime.now());
+            cuentaRolRepository.save(cr);
+        }
+
+        sincronizarLabelsPorCuenta(cuenta);
+        return pendientes.size();
+    }
+
     @Transactional
     public void rechazar(UUID cuentaRolId, String motivo) {
         var cr = cuentaRolRepository.findById(cuentaRolId)
@@ -85,7 +117,34 @@ public class AdminRolesService {
         if (cr.getEstado() != EstadoRol.PENDIENTE && cr.getEstado() != EstadoRol.PENDIENTE_VALIDACION) {
             throw new BadRequestException("La solicitud ya fue resuelta.");
         }
+        rechazarInterno(cr, motivo);
+    }
 
+    /**
+     * Rechaza en bloque todas las solicitudes pendientes (PENDIENTE o
+     * PENDIENTE_VALIDACION) de una cuenta. Pensado para el caso DELEGADO+JUGADOR
+     * donde el admin quiere rechazar la solicitud completa con un click.
+     */
+    @Transactional
+    public int rechazarTodos(UUID cuentaId, String motivo) {
+        var cuenta = cuentaRepository.findById(cuentaId)
+                .orElseThrow(() -> new ResourceNotFoundException("Cuenta no encontrada."));
+
+        var pendientes = cuentaRolRepository.findByCuentaId(cuenta.getId()).stream()
+                .filter(cr -> cr.getEstado() == EstadoRol.PENDIENTE
+                        || cr.getEstado() == EstadoRol.PENDIENTE_VALIDACION)
+                .toList();
+        if (pendientes.isEmpty()) {
+            throw new BadRequestException("La cuenta no tiene solicitudes pendientes.");
+        }
+
+        for (var cr : pendientes) {
+            rechazarInterno(cr, motivo);
+        }
+        return pendientes.size();
+    }
+
+    private void rechazarInterno(CuentaRol cr, String motivo) {
         var cuenta = cr.getCuenta();
         String cedulaSnap = cuenta.getCedula();
         String correoSnap = cuenta.getCorreo();
@@ -94,6 +153,7 @@ public class AdminRolesService {
         String rolSnap = cr.getRol().name();
 
         cuentaRolRepository.delete(cr);
+        cuentaRolRepository.flush();
 
         // Si la cuenta no conserva ningún otro rol vivo (aprobado o pendiente), se va completa.
         // Asi liberamos cedula/correo/appwriteUserId para que la persona pueda volver a registrarse.
@@ -129,6 +189,19 @@ public class AdminRolesService {
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "No existe una cuenta registrada con esa cedula."));
 
+        // Reglas:
+        //  - Todo DELEGADO tambien es JUGADOR (necesita padron).
+        //  - Todo ADMINISTRADOR es ADMIN + DELEGADO + JUGADOR (necesita padron tambien).
+        boolean arrastraJugadorYDelegado = rol == Rol.DELEGADO || rol == Rol.ADMINISTRADOR;
+        Jugador padronJugador = null;
+        if (arrastraJugadorYDelegado) {
+            padronJugador = jugadorRepository.findByCedula(cuenta.getCedula())
+                    .orElseThrow(() -> new BadRequestException(
+                            "La cedula " + cuenta.getCedula() + " no esta en la base de datos oficial. "
+                                    + " Para asignar el rol de " + rol.name()
+                                    + " carga la cedula via CSV."));
+        }
+
         var existente = cuentaRolRepository.findByCuentaIdAndRol(cuenta.getId(), rol);
         if (existente.isPresent() && existente.get().getEstado() == EstadoRol.APROBADO) {
             throw new ConflictException("La cuenta ya tiene el rol " + rol.name() + " aprobado.");
@@ -152,6 +225,12 @@ public class AdminRolesService {
                     .build());
         }
 
+        if (arrastraJugadorYDelegado) {
+            asegurarRolJugadorAprobado(cuenta, padronJugador);
+            // Si el rol asignado ya era DELEGADO esto es idempotente.
+            asegurarRolDelegadoAprobado(cuenta, motivo);
+        }
+
         sincronizarLabelsPorCuenta(cuenta);
 
         log.info("[AUDIT][ROL_ASIGNADO] caller={} cedula={} rol={} motivo={}",
@@ -159,6 +238,68 @@ public class AdminRolesService {
 
         notificacionPublisher.notificarAsignacionRol(
                 cuenta.getCedula(), cuenta.getCorreo(), cuenta.getNombre(), rol.name());
+    }
+
+    /**
+     * Garantiza que la cuenta tenga rol JUGADOR aprobado, tomando los datos
+     * academicos del padron. Idempotente: si ya esta aprobado, no hace nada.
+     */
+    private void asegurarRolJugadorAprobado(Cuenta cuenta, Jugador padron) {
+        var existente = cuentaRolRepository.findByCuentaIdAndRol(cuenta.getId(), Rol.JUGADOR);
+        if (existente.isPresent() && existente.get().getEstado() == EstadoRol.APROBADO) {
+            return;
+        }
+
+        if (existente.isPresent()) {
+            var cr = existente.get();
+            cr.setEstado(EstadoRol.APROBADO);
+            cr.setFechaResolucion(LocalDateTime.now());
+            cr.setMotivoRechazo(null);
+            cr.setRolJugador(padron.getRolJugador());
+            cr.setCodigoUniversitario(padron.getCodigoUniversitario());
+            cr.setSemestre(padron.getSemestre());
+            cuentaRolRepository.save(cr);
+        } else {
+            cuentaRolRepository.save(CuentaRol.builder()
+                    .cuenta(cuenta)
+                    .rol(Rol.JUGADOR)
+                    .estado(EstadoRol.APROBADO)
+                    .fechaSolicitud(LocalDateTime.now())
+                    .fechaResolucion(LocalDateTime.now())
+                    .rolJugador(padron.getRolJugador())
+                    .codigoUniversitario(padron.getCodigoUniversitario())
+                    .semestre(padron.getSemestre())
+                    .build());
+        }
+    }
+
+    /**
+     * Garantiza que la cuenta tenga rol DELEGADO aprobado. Idempotente.
+     * Lo usa el flujo de ADMINISTRADOR (un admin tambien puede gestionar equipos).
+     */
+    private void asegurarRolDelegadoAprobado(Cuenta cuenta, String motivo) {
+        var existente = cuentaRolRepository.findByCuentaIdAndRol(cuenta.getId(), Rol.DELEGADO);
+        if (existente.isPresent() && existente.get().getEstado() == EstadoRol.APROBADO) {
+            return;
+        }
+
+        if (existente.isPresent()) {
+            var cr = existente.get();
+            cr.setEstado(EstadoRol.APROBADO);
+            cr.setFechaResolucion(LocalDateTime.now());
+            cr.setMotivoRechazo(null);
+            cr.setMotivoSolicitud(motivo);
+            cuentaRolRepository.save(cr);
+        } else {
+            cuentaRolRepository.save(CuentaRol.builder()
+                    .cuenta(cuenta)
+                    .rol(Rol.DELEGADO)
+                    .estado(EstadoRol.APROBADO)
+                    .fechaSolicitud(LocalDateTime.now())
+                    .fechaResolucion(LocalDateTime.now())
+                    .motivoSolicitud(motivo)
+                    .build());
+        }
     }
 
     @Transactional

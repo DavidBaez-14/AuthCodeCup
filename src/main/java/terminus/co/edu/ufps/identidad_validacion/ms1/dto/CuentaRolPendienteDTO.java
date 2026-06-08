@@ -15,6 +15,7 @@ import terminus.co.edu.ufps.identidad_validacion.ms1.model.RolJugador;
 public class CuentaRolPendienteDTO {
 
     private UUID id;
+    private UUID cuentaId;
     private String cedula;
     private Rol rol;
     private EstadoRol estado;
@@ -34,6 +35,7 @@ public class CuentaRolPendienteDTO {
         }
         return CuentaRolPendienteDTO.builder()
                 .id(cr.getId())
+                .cuentaId(cuenta.getId())
                 .cedula(cuenta.getCedula())
                 .rol(cr.getRol())
                 .estado(cr.getEstado())
